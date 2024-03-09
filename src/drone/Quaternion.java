@@ -1,3 +1,5 @@
+package drone;
+
 // mostly copied from https://introcs.cs.princeton.edu/java/32class/Quaternion.java.html
 public final class Quaternion {
     // x0 + x1 * i + x2 * j + x3 * k
@@ -74,13 +76,13 @@ public final class Quaternion {
         return new Quaternion(x0, -x1, -x2, -x3);
     }
 
-    // return a new Quaternion whose value is the inverse of this
+    // return a new drone.Quaternion whose value is the inverse of this
     public Quaternion inv() {
         double d = x0 * x0 + x1 * x1 + x2 * x2 + x3 * x3;
         return new Quaternion(x0 / d, -x1 / d, -x2 / d, -x3 / d);
     }
 
-    // return a new Quaternion whose value is (this + b)
+    // return a new drone.Quaternion whose value is (this + b)
     public Quaternion add(Quaternion b) {
         return Quaternion.add(this, b);
     }
@@ -94,7 +96,7 @@ public final class Quaternion {
         return new Quaternion(x0 * s, x1 * s, x2 * s, x3 * s);
     }
 
-    // return a new Quaternion whose value is (this * b)
+    // return a new drone.Quaternion whose value is (this * b)
     public Quaternion mul(Quaternion b) {
         return Quaternion.mul(this, b);
     }
