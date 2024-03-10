@@ -22,9 +22,13 @@ public class MPU6050 implements AutoCloseable {
     private static final float TEMPERATURE_DIVISOR = 340f;
     private static final float TEMPERATURE_OFFSET = 36.53f;
 
-    private float ACCEL_X_SPIRIT = 0.0F;
-    private float ACCEL_Y_SPIRIT = 0.0F;
-    private float ACCEL_Z_SPIRIT = 0.0F;
+    private double ACCEL_X_SPIRIT = 0.0;
+    private double ACCEL_Y_SPIRIT = 0.0;
+    private double ACCEL_Z_SPIRIT = 0.0;
+
+    private double GYRO_X_SPIRIT = 0.0;
+    private double GYRO_Y_SPIRIT = 0.0;
+    private double GYRO_Z_SPIRIT = 0.0;
 
     private final I2CDevice delegate;
 
@@ -71,16 +75,16 @@ public class MPU6050 implements AutoCloseable {
 
     private Quaternion getGyroData() {
         return Quaternion.ofEuler(
-                readRegister(Registers.GYRO_X_REGISTER) / GYRO_SENSITIVITY,
-                readRegister(Registers.GYRO_Y_REGISTER) / GYRO_SENSITIVITY,
-                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY);
+                readRegister(Registers.GYRO_X_REGISTER) / GYRO_SENSITIVITY - GYRO_X_SPIRIT,
+                readRegister(Registers.GYRO_Y_REGISTER) / GYRO_SENSITIVITY - GYRO_Y_SPIRIT,
+                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY - GYRO_Z_SPIRIT);
     }
 
     private Vector3 getAccelerometerData() {
         return Vector3.of(
-                readRegister(Registers.ACCEL_X_REGISTER) / ACCEL_SENSITIVITY,
-                readRegister(Registers.ACCEL_Y_REGISTER) / ACCEL_SENSITIVITY,
-                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY);
+                readRegister(Registers.ACCEL_X_REGISTER) / ACCEL_SENSITIVITY - ACCEL_X_SPIRIT,
+                readRegister(Registers.ACCEL_Y_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Y_SPIRIT,
+                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Z_SPIRIT);
     }
 
     public float getTemperature() {
