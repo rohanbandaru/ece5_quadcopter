@@ -2,12 +2,12 @@ package sensors;
 
 import com.diozero.api.I2CDevice;
 import com.diozero.api.RuntimeIOException;
-import orientation.IMUData;
 import orientation.Quaternion;
 import orientation.Vector3;
 
 import java.util.HashMap;
 import java.util.Map;
+import static java.lang.Math.*;
 
 public class MPU6050 implements AutoCloseable {
     //https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
@@ -69,22 +69,18 @@ public class MPU6050 implements AutoCloseable {
         return "MPU-6050";
     }
 
-    public IMUData getImuData() {
-        return new IMUData(getGyroData(), getAccelerometerData());
+    public Vector3 getGyroData() {
+        Vector3 rates = Vector3.of(readRegister(Registers.GYRO_X_REGISTER) / GYRO_SENSITIVITY - GYRO_X_SPIRIT,
+                                readRegister(Registers.GYRO_Y_REGISTER) / GYRO_SENSITIVITY - GYRO_Y_SPIRIT,
+                                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY - GYRO_Z_SPIRIT);
+        return rates.scale(1/65.5 * PI/180); // convert to radians/s
     }
 
-    private Quaternion getGyroData() {
-        return Quaternion.ofEuler(
-                readRegister(Registers.GYRO_X_REGISTER) / GYRO_SENSITIVITY - GYRO_X_SPIRIT,
-                readRegister(Registers.GYRO_Y_REGISTER) / GYRO_SENSITIVITY - GYRO_Y_SPIRIT,
-                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY - GYRO_Z_SPIRIT);
-    }
-
-    private Vector3 getAccelerometerData() {
-        return Vector3.of(
-                readRegister(Registers.ACCEL_X_REGISTER) / ACCEL_SENSITIVITY - ACCEL_X_SPIRIT,
-                readRegister(Registers.ACCEL_Y_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Y_SPIRIT,
-                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Z_SPIRIT);
+    public Vector3 getAccelerometerData() {
+        Vector3 acc =  Vector3.of(readRegister(Registers.ACCEL_X_REGISTER) / ACCEL_SENSITIVITY - ACCEL_X_SPIRIT,
+                                readRegister(Registers.ACCEL_Y_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Y_SPIRIT,
+                                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Z_SPIRIT);
+        return acc.scale(1.0/4096); // convert to Gs
     }
 
     public float getTemperature() {
@@ -93,6 +89,56 @@ public class MPU6050 implements AutoCloseable {
 
     private byte getI2CAddress() {
         return delegate.readByteData(Registers.WHO_AM_I);
+    }
+
+    public void calibrateGyro(int count) {
+        Vector3 rates = new Vector3(0, 0, 0);
+        for(int i = 0; i<count; i++) {
+            rates = rates.add(getGyroData());
+        }
+        GYRO_X_SPIRIT = rates.x()/count;
+        GYRO_Y_SPIRIT = rates.y()/count;
+        GYRO_Z_SPIRIT = rates.z()/count;
+    }
+
+    private void calAccelSpirit(int count) {
+        Vector3 accel = new Vector3(0, 0, 0);
+        for(int i = 0; i<count; i++) {
+            accel = accel.add(getAccelerometerData());
+        }
+        ACCEL_X_SPIRIT = accel.x()/count;
+        ACCEL_Y_SPIRIT = accel.y()/count;
+        ACCEL_Z_SPIRIT = accel.z()/count;
+    }
+
+    public void calibrateAccelXAxisVertical(int count) {
+        // imu is oriented with X axis pointing vertical
+        calAccelSpirit(count);
+        if (ACCEL_X_SPIRIT > 0.8) { // oriented face down, gravity is positive 1
+            ACCEL_X_SPIRIT = ACCEL_X_SPIRIT-1;
+        }else if (ACCEL_X_SPIRIT < 0.8) { // oriented face up, gravity is negative 1
+            ACCEL_X_SPIRIT = ACCEL_X_SPIRIT+1;
+        }
+    }
+
+    public void calibrateAccelYAxisVertical(int count) {
+        // imu is oriented with Y axis pointing vertical
+        calAccelSpirit(count);
+        if (ACCEL_Y_SPIRIT > 0.8) { // oriented face down, gravity is positive 1
+            ACCEL_Y_SPIRIT = ACCEL_Y_SPIRIT-1;
+        }else if (ACCEL_Y_SPIRIT < 0.8) { // oriented face up, gravity is negative 1
+            ACCEL_Y_SPIRIT = ACCEL_Y_SPIRIT+1;
+        }
+    }
+
+    public void calibrateAccelZAxisVertical(int count) {
+        // imu is oriented with Z axis pointing vertical
+        calAccelSpirit(count);
+        if (ACCEL_Z_SPIRIT > 0.8) { // oriented face down, gravity is positive 1
+            ACCEL_Z_SPIRIT = ACCEL_Z_SPIRIT-1;
+        }else if (ACCEL_Z_SPIRIT < 0.8) { // oriented face up, gravity is negative 1
+            ACCEL_Z_SPIRIT = ACCEL_Z_SPIRIT+1;
+        }
     }
 
     /**

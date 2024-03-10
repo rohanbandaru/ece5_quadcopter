@@ -11,11 +11,11 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
     public static final Quaternion K = new Quaternion(0, 0, 0, 1);
 
     // create a new object with the given components
-    public Quaternion(double x0, double x1, double x2, double x3) {
-        this.x0 = x0;
-        this.x1 = x1;
-        this.x2 = x2;
-        this.x3 = x3;
+    public static Quaternion of(double x0, double x1, double x2, double x3) {
+        return new Quaternion(x0, x1, x2, x3);
+    }
+    public static Quaternion ofVector3(Vector3 v) {
+        return new Quaternion(0, v.x(), v.y(), v.z());
     }
 
     // creates quaternion from euler angles in radians
@@ -67,6 +67,7 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
 
     public Quaternion normalized() {
         double mag = this.norm();
+        if (mag == 0) return IDENTITY;
         return this.scale(1 / mag);
     }
 

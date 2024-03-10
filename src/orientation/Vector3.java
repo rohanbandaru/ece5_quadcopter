@@ -4,6 +4,9 @@ public record Vector3(double x, double y, double z) {
 	public static Vector3 of(double x, double y, double z) {
 		return new Vector3(x, y, z);
 	}
+	public static Vector3 ofQuaternion(Quaternion q) {
+		return new Vector3(q.x1(), q.x2(), q.x3());
+	}
 
 	public static final Vector3 ZERO = new Vector3(0, 0, 0);
 	public static final Vector3 I = new Vector3(1, 0, 0);
@@ -18,6 +21,7 @@ public record Vector3(double x, double y, double z) {
 	}
 	public Vector3 normalized() {
 		double mag = this.norm();
+		if(mag == 0) return this; // no divide by 0
 		return this.scale(1 / mag);
 	}
 
@@ -43,5 +47,13 @@ public record Vector3(double x, double y, double z) {
 
 	public static Vector3 cross(Vector3 a, Vector3 b) {
 		return new Vector3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+	}
+
+	public static Vector3 rotateBy(Vector3 v, Quaternion q) {
+		return Vector3.ofQuaternion(q.mul(Quaternion.ofVector3(v)).mul(q.inv()));
+	}
+
+	public Vector3 rotatedBy(Quaternion q) {
+		return Vector3.rotateBy(this, q);
 	}
 }
