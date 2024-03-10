@@ -1,7 +1,7 @@
 package orientation;
 
 // mostly copied from https://introcs.cs.princeton.edu/java/32class/Quaternion.java.html
-public final class Quaternion {
+public record Quaternion(double x0, double x1, double x2, double x3) {
     // x0 + x1 * i + x2 * j + x3 * k
 
     public static final Quaternion IDENTITY = new Quaternion(1, 0, 0, 0);
@@ -9,8 +9,6 @@ public final class Quaternion {
     public static final Quaternion I = new Quaternion(0, 1, 0, 0);
     public static final Quaternion J = new Quaternion(0, 0, 1, 0);
     public static final Quaternion K = new Quaternion(0, 0, 0, 1);
-
-    private final double x0, x1, x2, x3;
 
     // create a new object with the given components
     public Quaternion(double x0, double x1, double x2, double x3) {
@@ -21,7 +19,7 @@ public final class Quaternion {
     }
 
     // creates quaternion from euler angles in radians
-    public Quaternion(double yaw, double pitch, double roll) {
+    public static Quaternion ofEuler(double yaw, double pitch, double roll) {
         double cy = Math.cos(yaw / 2);
         double cp = Math.cos(pitch / 2);
         double cr = Math.cos(roll / 2);
@@ -29,10 +27,12 @@ public final class Quaternion {
         double sp = Math.sin(pitch / 2);
         double sr = Math.sin(roll / 2);
 
-        this.x0 = cr * cp * cy + sr * sp * sy;
-        this.x1 = sr * cp * cy - cr * sp * sy;
-        this.x2 = cr * sp * cy + sr * cp * sy;
-        this.x3 = cr * cp * sy - sr * sp * cy;
+        double x0 = cr * cp * cy + sr * sp * sy;
+        double x1 = sr * cp * cy - cr * sp * sy;
+        double x2 = cr * sp * cy + sr * cp * sy;
+        double x3 = cr * cp * sy - sr * sp * cy;
+
+        return new Quaternion(x0, x1, x2, x3);
     }
 
     // returns quaternion as array of euler angles

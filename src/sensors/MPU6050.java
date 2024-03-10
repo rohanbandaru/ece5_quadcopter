@@ -3,14 +3,16 @@ package sensors;
 import com.diozero.api.I2CDevice;
 import com.diozero.api.RuntimeIOException;
 import orientation.IMUData;
+import orientation.Quaternion;
+import orientation.Vector3;
 
 import java.util.HashMap;
 import java.util.Map;
 
-public class MPU6050 {
+public class MPU6050 implements AutoCloseable {
     //https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
-    public static final int DEFAULT_ADDRESS = 0x68;
-    public static final int OTHER_ADDRESS = 0x69;
+    private static final int DEFAULT_ADDRESS = 0x68;
+    private static final int OTHER_ADDRESS = 0x69;
 
     // default sensitivities
     private static final float GYRO_SENSITIVITY = 131f;
@@ -28,9 +30,10 @@ public class MPU6050 {
 
     public MPU6050(int controller) {
         delegate = new I2CDevice(controller, DEFAULT_ADDRESS);
+        configure();
     }
 
-    public void configure() {
+    private void configure() {
         writeConfiguration("Waking up device",
                 Registers.POWER_MANAGEMENT_CONFIG,
                 RegisterValues.WAKEUP);
@@ -62,29 +65,29 @@ public class MPU6050 {
         return "MPU-6050";
     }
 
-    public IMUData getImuData() throws RuntimeIOException {
+    public IMUData getImuData() {
         return new IMUData(getGyroData(), getAccelerometerData());
     }
 
-    public double[] getGyroData() throws RuntimeIOException {
-        return new double[]{
+    private Quaternion getGyroData() {
+        return Quaternion.ofEuler(
                 readRegister(Registers.GYRO_X_REGISTER) / GYRO_SENSITIVITY,
                 readRegister(Registers.GYRO_Y_REGISTER) / GYRO_SENSITIVITY,
-                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY};
+                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY);
     }
 
-    public double[] getAccelerometerData() throws RuntimeIOException {
-        return new double[]{
+    private Vector3 getAccelerometerData() {
+        return Vector3.of(
                 readRegister(Registers.ACCEL_X_REGISTER) / ACCEL_SENSITIVITY,
                 readRegister(Registers.ACCEL_Y_REGISTER) / ACCEL_SENSITIVITY,
-                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY};
+                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY);
     }
 
     public float getTemperature() {
         return (readRegister(Registers.TEMPERATURE_REGISTER) / TEMPERATURE_DIVISOR) + TEMPERATURE_OFFSET;
     }
 
-    public byte getI2CAddress() {
+    private byte getI2CAddress() {
         return delegate.readByteData(Registers.WHO_AM_I);
     }
 
@@ -114,9 +117,12 @@ public class MPU6050 {
     private int readRegister(int register) {
         byte high = delegate.readByteData(register);
         byte low = delegate.readByteData(register + 1);
-        int value = (high << 8) + low;
-        if (value >= 0x8000) return -(65536 - value); // what...
-        return value;
+		return (high << 8) + low;
+    }
+
+    @Override
+    public void close() {
+        delegate.close();
     }
 
     private interface Registers {
