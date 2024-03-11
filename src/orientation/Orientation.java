@@ -15,7 +15,6 @@ public class Orientation {
         orientation_raw_gyro = orientation_raw_gyro.mul(d_gyro);
 
         // accelerations are body-frame
-        Vector3 expected_accel =
 
         Vector3 gravity = Vector3.of(1, 0, 0).rotatedBy(orientation_raw_gyro);
 

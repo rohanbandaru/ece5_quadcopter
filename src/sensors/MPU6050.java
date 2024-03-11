@@ -11,7 +11,6 @@ import java.lang.foreign.ValueLayout;
 import static java.lang.Math.PI;
 import static java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED;
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static sensors.MPU6050.Registers.*;
 
 public class MPU6050 implements AutoCloseable {
 	private static final ValueLayout.OfShort MPU_SHORT = JAVA_SHORT_UNALIGNED.withOrder(BIG_ENDIAN);
@@ -64,7 +63,6 @@ public class MPU6050 implements AutoCloseable {
 	}
 
 	public void calibrate(Vector3 up) {
-		// imu is oriented with X axis pointing vertical
 		Vector3 gyro = Vector3.zero();
 		Vector3 accel = Vector3.zero();
 
@@ -78,7 +76,7 @@ public class MPU6050 implements AutoCloseable {
 		gyroSpirit = gyroSpirit.add(gyro.scale(1.0 / CALIBRATION_COUNT));
 		accelSpirit = accelSpirit.add(accel.scale(1.0 / CALIBRATION_COUNT));
 
-		var gravityAxis = accelSpirit.projectedOnto(up);
+		var gravityAxis = accelSpirit.projectedOnto(up).normalized();
 		if (gravityAxis.comp(up) > 0)
 			throw new IllegalArgumentException("Vertical axis is not aligned with gravity");
 
@@ -86,29 +84,30 @@ public class MPU6050 implements AutoCloseable {
 	}
 
 	public Reading read() {
-		var data = readArray(ACCEL_X_REGISTER, MPU_SHORT, 7);
+		var data = readArray(Registers.ACCEL_X_REGISTER, MPU_SHORT, 7);
 
 		var accel = processRawAccel(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
 		var temperature = processRawTemperature(data.getAtIndex(MPU_SHORT, 3));
 		var gyro = processRawGyro(data.getAtIndex(MPU_SHORT, 4), data.getAtIndex(MPU_SHORT, 5), data.getAtIndex(MPU_SHORT, 6));
+		throw new UnsupportedOperationException();
 // TODO: gyro and accel variance here
-		return new Reading(temperature, 1, gyro, accel);
+//		return new Reading(temperature, 1, gyro, accel);
 	}
 
 	public Vector3 readGyro() {
-		var data = readArray(GYRO_X_REGISTER, MPU_SHORT, 3);
+		var data = readArray(Registers.GYRO_X_REGISTER, MPU_SHORT, 3);
 
 		return processRawGyro(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
 	}
 
 	public Vector3 readAccelerometer() {
-		var data = readArray(ACCEL_X_REGISTER, MPU_SHORT, 3);
+		var data = readArray(Registers.ACCEL_X_REGISTER, MPU_SHORT, 3);
 
 		return processRawAccel(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
 	}
 
 	public double readTemperature() {
-		var data = readArray(TEMPERATURE_REGISTER, MPU_SHORT, 1);
+		var data = readArray(Registers.TEMPERATURE_REGISTER, MPU_SHORT, 1);
 		return processRawTemperature(data.getAtIndex(MPU_SHORT, 0));
 	}
 
