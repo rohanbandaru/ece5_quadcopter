@@ -111,7 +111,6 @@ public class MPU6050 implements AutoCloseable {
 		return processRawTemperature(data.getAtIndex(MPU_SHORT, 0));
 	}
 
-
 	private Vector3 processRawAccel(short x, short y, short z) {
 		return Vector3.of(x, y, z).scale(ACCEL_CONVERSION).sub(accelSpirit);
 	}
