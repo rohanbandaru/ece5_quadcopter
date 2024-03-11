@@ -2,9 +2,14 @@ package sensors;
 
 import com.diozero.api.I2CDevice;
 
+import java.time.Instant;
+
 import static java.lang.Math.pow;
+import static java.time.Instant.now;
+import static sensors.BMP388.IIR.COEF_0;
 import static sensors.BMP388.IIR.COEF_7;
-import static sensors.BMP388.Oversampling.HIGH;
+import static sensors.BMP388.PressureOversample.HIGH;
+import static sensors.BMP388.PressureOversample.STANDARD;
 import static sensors.BMP388.Register.*;
 
 public class BMP388 implements AutoCloseable {
@@ -13,13 +18,22 @@ public class BMP388 implements AutoCloseable {
 	private final I2CDevice delegate;
 	private final CalibrationData calibration;
 
+	private double zeroAltitude;
+
+	private PressureOversample pressureOversample;
+	private IIR iir;
+
 	private BMP388(I2CDevice delegate) {
 		this.delegate = delegate;
 
 		this.delegate.writeBit(OSR.address, 1, true);
 		this.delegate.writeBit(OSR.address, 0, true);
 
+		configureIIR(COEF_0);
+		configureOversampling(STANDARD);
+
 		this.calibration = new CalibrationData(delegate.readI2CBlockDataByteArray(0x30, 0x27));
+		this.zeroAltitude = read().pressure;
 	}
 
 	public static BMP388 withDefaults(int controller) {
@@ -33,19 +47,29 @@ public class BMP388 implements AutoCloseable {
 	}
 
 	public Reading read() {
-		while (!dataReady());
+		while (!dataReady()) ;
 
 		var temperature = compensatedTemperature(rawTemperature());
-		var pressure = compensatedPressure(rawPressure(), temperature);
+		var pressure = compensatedPressure(rawPressure(), temperature) - zeroAltitude;
 
-		return new Reading(temperature, pressure);
+		return new Reading(now(), temperature, pressure, temperatureVariance(), pressureVariance());
 	}
 
-	public void configureOversampling(Oversampling oversampling) {
-		delegate.writeByteData(OSR.address, (byte) oversampling.ordinal());
+	public double temperatureVariance() {
+		return pow(0.005, 2);
+	}
+
+	public double pressureVariance() {
+		return pressureOversample.variance(iir);
+	}
+
+	public void configureOversampling(PressureOversample pressureOversample) {
+		this.pressureOversample = pressureOversample;
+		delegate.writeByteData(OSR.address, (byte) pressureOversample.ordinal());
 	}
 
 	public void configureIIR(IIR iir) {
+		this.iir = iir;
 		delegate.writeByteData(CONFIG.address, (byte) iir.ordinal());
 	}
 
@@ -135,13 +159,26 @@ public class BMP388 implements AutoCloseable {
 		}
 	}
 
-	public enum Oversampling {
+	public enum PressureOversample {
 		ULTRA_LOW,
 		LOW,
 		STANDARD,
 		HIGH,
 		ULTRA_HIGH,
-		HIGHEST
+		HIGHEST;
+
+		private static final double[][] rmsNoise = {
+				{6.6, 3.8, 2.5, 1.7, 1.2, 0.8, 0.6, 0.4},
+				{4.3, 2.5, 1.6, 1.1, 0.8, 0.5, 0.4, 0.3},
+				{3.2, 1.8, 1.2, 0.8, 0.6, 0.4, 0.3, 0.2},
+				{2.3, 1.3, 0.9, 0.6, 0.4, 0.3, 0.2, 0.1},
+				{1.6, 0.9, 0.6, 0.4, 0.2, 0.2, 0.1, 0.1},
+				{1.2, 0.7, 0.4, 0.3, 0.3, 0.1, 0.1, 0.1}
+		};
+
+		public double variance(IIR iir) {
+			return pow(rmsNoise[ordinal()][iir.ordinal()], 2);
+		}
 	}
 
 	public enum IIR {
@@ -169,11 +206,11 @@ public class BMP388 implements AutoCloseable {
 		}
 
 		public double par_p1() {
-			return ((int)(short)(((data[0x6] & 0xff) << 8) | (data[0x5] & 0xff)) - (1 << 14)) / pow(2, 20);
+			return ((int) (short) (((data[0x6] & 0xff) << 8) | (data[0x5] & 0xff)) - (1 << 14)) / pow(2, 20);
 		}
 
 		public double par_p2() {
-			return ((int)(short)(((data[0x8] & 0xff) << 8) | (data[0x7] & 0xff)) - (1 << 14)) / pow(2, 29);
+			return ((int) (short) (((data[0x8] & 0xff) << 8) | (data[0x7] & 0xff)) - (1 << 14)) / pow(2, 29);
 		}
 
 		public double par_p3() {
@@ -201,7 +238,7 @@ public class BMP388 implements AutoCloseable {
 		}
 
 		public double par_p9() {
-			return (int)(short)(((data[0x12] & 0xff) << 8) | (data[0x11] & 0xff)) / pow(2, 48);
+			return (int) (short) (((data[0x12] & 0xff) << 8) | (data[0x11] & 0xff)) / pow(2, 48);
 		}
 
 		public double par_p10() {
@@ -257,5 +294,13 @@ public class BMP388 implements AutoCloseable {
 		}
 	}
 
-	public record Reading(double temperature, double pressure) {}
+	public record Reading(Instant time, double temperature, double pressure, double temperatureVariance, double pressureVariance) {
+		public double altitude() {
+			return pressure / 0.12677457000000025;
+		}
+
+		public double altitudeVariance() {
+			return pressureVariance / pow(0.12677457000000025, 2);
+		}
+	}
 }

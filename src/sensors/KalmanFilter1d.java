@@ -24,4 +24,8 @@ public class KalmanFilter1d {
 	public double state() {
 		return state;
 	}
+
+	public double variance() {
+		return variance;
+	}
 }

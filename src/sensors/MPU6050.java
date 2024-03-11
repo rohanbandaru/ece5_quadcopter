@@ -2,316 +2,299 @@ package sensors;
 
 import com.diozero.api.I2CDevice;
 import com.diozero.api.RuntimeIOException;
-import orientation.Quaternion;
 import orientation.Vector3;
 
-import java.util.HashMap;
-import java.util.Map;
-import static java.lang.Math.*;
+import java.lang.foreign.MemoryLayout;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+
+import static java.lang.Math.PI;
+import static java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED;
+import static java.nio.ByteOrder.BIG_ENDIAN;
+import static sensors.MPU6050.Registers.*;
 
 public class MPU6050 implements AutoCloseable {
-    //https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
-    private static final int DEFAULT_ADDRESS = 0x68;
-    private static final int OTHER_ADDRESS = 0x69;
+	private static final ValueLayout.OfShort MPU_SHORT = JAVA_SHORT_UNALIGNED.withOrder(BIG_ENDIAN);
+	private static final double G = 9.80665;
 
-    // default sensitivities
-    private static final float GYRO_SENSITIVITY = 131f;
-    private static final float ACCEL_SENSITIVITY = 16384f;
+	//https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
+	private static final int DEFAULT_ADDRESS = 0x68;
+	private static final int OTHER_ADDRESS = 0x69;
 
-    // temperature values
-    private static final float TEMPERATURE_DIVISOR = 340f;
-    private static final float TEMPERATURE_OFFSET = 36.53f;
+	// default sensitivities
+	private static final double GYRO_SENSITIVITY = 131f;
+	private static final double ACCEL_SENSITIVITY = 16384f;
 
-    private double ACCEL_X_SPIRIT = 0.0;
-    private double ACCEL_Y_SPIRIT = 0.0;
-    private double ACCEL_Z_SPIRIT = 0.0;
+	private static final double GYRO_CONVERSION = 1 / 65.5 * PI / 180 / GYRO_SENSITIVITY;
+	private static final double ACCEL_CONVERSION = 1. / 4096 * G / ACCEL_SENSITIVITY;
 
-    private double GYRO_X_SPIRIT = 0.0;
-    private double GYRO_Y_SPIRIT = 0.0;
-    private double GYRO_Z_SPIRIT = 0.0;
+	// temperature values
+	private static final double TEMPERATURE_DIVISOR = 340f;
+	private static final double TEMPERATURE_OFFSET = 36.53f;
 
-    private final I2CDevice delegate;
+	private static final int CALIBRATION_COUNT = 100;
 
-    public MPU6050(int controller) {
-        delegate = new I2CDevice(controller, DEFAULT_ADDRESS);
-        configure();
-    }
+	private Vector3 accelSpirit = Vector3.zero();
+	private Vector3 gyroSpirit = Vector3.zero();
 
-    private void configure() {
-        writeConfiguration("Waking up device",
-                Registers.POWER_MANAGEMENT_CONFIG,
-                RegisterValues.WAKEUP);
-        writeConfiguration("Configuring sample rate",
-                Registers.SAMPLE_RATE_DIVISOR,
-                RegisterValues.DEFAULT_SAMPLE_DIVISOR);
-        writeConfiguration("Configuring gyroscope (500dps full scale)",
-                Registers.GYRO_CONFIGURATION, (byte)0x08);
-        writeConfiguration("Configuring accelerometer (+/-8g)",
-                Registers.ACCELEROMETER_CONFIGURATION, (byte)0x10);
-        writeConfiguration("Configuring interrupts",
-                Registers.ENABLE_INTERRUPTS,
-                RegisterValues.INTERRUPT_DISABLED);
-        writeConfiguration("Configuring low power operations",
-                Registers.STANDBY_MANAGEMENT_CONFIG,
-                RegisterValues.STANDBY_DISABLED);
-    }
+	private final I2CDevice delegate;
 
-    public Map<Integer, Byte> dumpRegisters() {
-        Map<Integer, Byte> values = new HashMap<>();
-        for (int i = 1; i <= 120; i++) {
-            byte registerData = delegate.readByteData(i);
-            values.put(i, registerData);
-        }
-        return values;
-    }
+	public MPU6050(int controller) {
+		delegate = new I2CDevice(controller, DEFAULT_ADDRESS);
+		configure();
+	}
 
-    public String getImuName() {
-        return "MPU-6050";
-    }
+	private void configure() {
+		writeConfiguration("Waking up device",
+				Registers.POWER_MANAGEMENT_CONFIG,
+				RegisterValues.WAKEUP);
+		writeConfiguration("Configuring sample rate",
+				Registers.SAMPLE_RATE_DIVISOR,
+				RegisterValues.DEFAULT_SAMPLE_DIVISOR);
+		writeConfiguration("Configuring gyroscope (500dps full scale)",
+				Registers.GYRO_CONFIGURATION, (byte) 0x08);
+		writeConfiguration("Configuring accelerometer (+/-8g)",
+				Registers.ACCELEROMETER_CONFIGURATION, (byte) 0x10);
+		writeConfiguration("Configuring interrupts",
+				Registers.ENABLE_INTERRUPTS,
+				RegisterValues.INTERRUPT_DISABLED);
+		writeConfiguration("Configuring low power operations",
+				Registers.STANDBY_MANAGEMENT_CONFIG,
+				RegisterValues.STANDBY_DISABLED);
+	}
 
-    public Vector3 getGyroData() {
-        Vector3 rates = Vector3.of(readRegister(Registers.GYRO_X_REGISTER) / GYRO_SENSITIVITY - GYRO_X_SPIRIT,
-                                readRegister(Registers.GYRO_Y_REGISTER) / GYRO_SENSITIVITY - GYRO_Y_SPIRIT,
-                                readRegister(Registers.GYRO_Z_REGISTER) / GYRO_SENSITIVITY - GYRO_Z_SPIRIT);
-        return rates.scale(1/65.5 * PI/180); // convert to radians/s
-    }
+	public void calibrate(Vector3 up) {
+		// imu is oriented with X axis pointing vertical
+		Vector3 gyro = Vector3.zero();
+		Vector3 accel = Vector3.zero();
 
-    public Vector3 getAccelerometerData() {
-        Vector3 acc =  Vector3.of(readRegister(Registers.ACCEL_X_REGISTER) / ACCEL_SENSITIVITY - ACCEL_X_SPIRIT,
-                                readRegister(Registers.ACCEL_Y_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Y_SPIRIT,
-                                readRegister(Registers.ACCEL_Z_REGISTER) / ACCEL_SENSITIVITY - ACCEL_Z_SPIRIT);
-        return acc.scale(1.0/4096); // convert to Gs
-    }
+		for (int i = 0; i < CALIBRATION_COUNT; i++) {
+			var reading = read();
 
-    public float getTemperature() {
-        return (readRegister(Registers.TEMPERATURE_REGISTER) / TEMPERATURE_DIVISOR) + TEMPERATURE_OFFSET;
-    }
+			gyro = gyro.add(reading.gyro());
+			accel = accel.add(reading.accel());
+		}
 
-    private byte getI2CAddress() {
-        return delegate.readByteData(Registers.WHO_AM_I);
-    }
+		gyroSpirit = gyroSpirit.add(gyro.scale(1.0 / CALIBRATION_COUNT));
+		accelSpirit = accelSpirit.add(accel.scale(1.0 / CALIBRATION_COUNT));
 
-    public void calibrateGyro(int count) {
-        Vector3 rates = new Vector3(0, 0, 0);
-        for(int i = 0; i<count; i++) {
-            rates = rates.add(getGyroData());
-        }
-        GYRO_X_SPIRIT = rates.x()/count;
-        GYRO_Y_SPIRIT = rates.y()/count;
-        GYRO_Z_SPIRIT = rates.z()/count;
-    }
+		var gravityAxis = accelSpirit.projectedOnto(up);
+		if (gravityAxis.comp(up) > 0)
+			throw new IllegalArgumentException("Vertical axis is not aligned with gravity");
 
-    private void calAccelSpirit(int count) {
-        Vector3 accel = new Vector3(0, 0, 0);
-        for(int i = 0; i<count; i++) {
-            accel = accel.add(getAccelerometerData());
-        }
-        ACCEL_X_SPIRIT = accel.x()/count;
-        ACCEL_Y_SPIRIT = accel.y()/count;
-        ACCEL_Z_SPIRIT = accel.z()/count;
-    }
+		accelSpirit = accelSpirit.add(gravityAxis.scale(G));
+	}
 
-    public void calibrateAccelXAxisVertical(int count) {
-        // imu is oriented with X axis pointing vertical
-        calAccelSpirit(count);
-        if (ACCEL_X_SPIRIT > 0.8) { // oriented face down, gravity is positive 1
-            ACCEL_X_SPIRIT = ACCEL_X_SPIRIT-1;
-        }else if (ACCEL_X_SPIRIT < 0.8) { // oriented face up, gravity is negative 1
-            ACCEL_X_SPIRIT = ACCEL_X_SPIRIT+1;
-        }
-    }
+	public Reading read() {
+		var data = readArray(ACCEL_X_REGISTER, MPU_SHORT, 7);
 
-    public void calibrateAccelYAxisVertical(int count) {
-        // imu is oriented with Y axis pointing vertical
-        calAccelSpirit(count);
-        if (ACCEL_Y_SPIRIT > 0.8) { // oriented face down, gravity is positive 1
-            ACCEL_Y_SPIRIT = ACCEL_Y_SPIRIT-1;
-        }else if (ACCEL_Y_SPIRIT < 0.8) { // oriented face up, gravity is negative 1
-            ACCEL_Y_SPIRIT = ACCEL_Y_SPIRIT+1;
-        }
-    }
+		var accel = processRawAccel(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
+		var temperature = processRawTemperature(data.getAtIndex(MPU_SHORT, 3));
+		var gyro = processRawGyro(data.getAtIndex(MPU_SHORT, 4), data.getAtIndex(MPU_SHORT, 5), data.getAtIndex(MPU_SHORT, 6));
+// TODO: gyro and accel variance here
+		return new Reading(temperature, 1, gyro, accel);
+	}
 
-    public void calibrateAccelZAxisVertical(int count) {
-        // imu is oriented with Z axis pointing vertical
-        calAccelSpirit(count);
-        if (ACCEL_Z_SPIRIT > 0.8) { // oriented face down, gravity is positive 1
-            ACCEL_Z_SPIRIT = ACCEL_Z_SPIRIT-1;
-        }else if (ACCEL_Z_SPIRIT < 0.8) { // oriented face up, gravity is negative 1
-            ACCEL_Z_SPIRIT = ACCEL_Z_SPIRIT+1;
-        }
-    }
+	public Vector3 readGyro() {
+		var data = readArray(GYRO_X_REGISTER, MPU_SHORT, 3);
 
-    /**
-     * Write and verify a device configuration value.
-     *
-     * @param configurationName name of the config for error messages
-     * @param register          the register to write to
-     * @param data              the configuration data
-     */
-    private void writeConfiguration(String configurationName, byte register, byte data) {
-        delegate.writeByteData(register, data);
-        byte actual = delegate.readByteData(register);
-        if (actual != data) {
-            throw new RuntimeIOException(
-                    String.format("%s: Tried to write '%02x' to register %02x, but value is '%02x'",
-                            configurationName, data, register, actual));
-        }
-    }
+		return processRawGyro(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
+	}
 
-    /**
-     * Read a "double byte" from this register and the next one.
-     *
-     * @param register the register to read from
-     * @return the 2-byte integer value
-     */
-    private int readRegister(int register) {
-        byte high = delegate.readByteData(register);
-        byte low = delegate.readByteData(register + 1);
-		return (high << 8) + low;
-    }
+	public Vector3 readAccelerometer() {
+		var data = readArray(ACCEL_X_REGISTER, MPU_SHORT, 3);
 
-    @Override
-    public void close() {
-        delegate.close();
-    }
+		return processRawAccel(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
+	}
 
-    private interface Registers {
-        /**
-         * Set the sample rate (the values are divided by this).
-         */
-        byte SAMPLE_RATE_DIVISOR = 0x19;
-        /**
-         * Set up the low-pass filter
-         */
-        byte LOW_PASS_FILTER = 0x1a;
-        /**
-         * Set up the gyroscope
-         */
-        byte GYRO_CONFIGURATION = 0x1b;
-        /**
-         * Accelerometer configuration
-         */
-        byte ACCELEROMETER_CONFIGURATION = 0x1c;
-        /**
-         * FIFO (not used)
-         */
-        byte FIFO_CONFIGURATION = 0x23;
-        /**
-         * Enable interrupts (disabling)
-         */
-        byte ENABLE_INTERRUPTS = 0x38;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the accelerometer's X axis.
-         */
-        byte ACCEL_X_REGISTER = 0x3b;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the accelerometer's Y axis.
-         */
-        byte ACCEL_Y_REGISTER = 0x3d;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the accelerometer's Z axis.
-         */
-        byte ACCEL_Z_REGISTER = 0x3f;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the temperature sensor.
-         */
-        byte TEMPERATURE_REGISTER = 0x41;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the gyro's X axis.
-         */
-        byte GYRO_X_REGISTER = 0x43;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the gyro's Y axis.
-         */
-        byte GYRO_Y_REGISTER = 0x45;
-        /**
-         * Register for high bits of a 2's complement 16-bit value. The low bits
-         * are assumed to be in the next register (this + 1).
-         * <p>
-         * This is the most recent reading from the gyro's Z axis.
-         */
-        byte GYRO_Z_REGISTER = 0x47;
-        /**
-         * Resets the various signals.
-         */
-        byte SIGNAL_PATH_RESET = 0x68;
-        /**
-         * I2C management
-         */
-        byte I2C_CONFIG = 0x6a;
-        /**
-         * Basic power management
-         */
-        byte POWER_MANAGEMENT_CONFIG = 0x6b;
-        /**
-         * The I2C address (6-bits)
-         */
-        byte WHO_AM_I = 0x75;
-        /**
-         * Standby mode management.
-         */
-        byte STANDBY_MANAGEMENT_CONFIG = 0x6c;
-    }
+	public double readTemperature() {
+		var data = readArray(TEMPERATURE_REGISTER, MPU_SHORT, 1);
+		return processRawTemperature(data.getAtIndex(MPU_SHORT, 0));
+	}
 
-    private interface RegisterValues {
-        /**
-         * Just wakes the device up, because it sets the sleep bit to 0. Also sets
-         * the clock source to internal.
-         */
-        byte WAKEUP = 0x0;
-        /**
-         * Sets the full scale range of the gyroscopes to ± 2000 °/s
-         */
-        byte DEFAULT_GYRO_CONFIGURATION = 0x18;
-        /**
-         * Sets the sample rate divider for the gyroscopes and accelerometers. This
-         * means<br> acc-rate = 1kHz / 1+ sample-rate<br> and <br>gyro-rate = 8kHz /
-         * 1+ sample-rate. <br> <br> The concrete value 0 leaves the sample rate on
-         * default, which means 1kHz for acc-rate and 8kHz for gyr-rate.
-         */
-        byte DEFAULT_SAMPLE_DIVISOR = 0x0;
-        /**
-         * Setting the digital low pass filter to <br>
-         * Acc Bandwidth (Hz) = 184 <br>
-         * Acc Delay (ms) = 2.0 <br>
-         * Gyro Bandwidth (Hz) = 188 <br>
-         * Gyro Delay (ms) = 1.9 <br>
-         * Fs (kHz) = 1
-         */
-        byte LOW_PASS_CONFIG = 0x1;
-        /**
-         * Setting accelerometer sensitivity to ± 2g
-         */
-        byte DEFAULT_ACCEL_CONFIGURATION = 0x0;
-        /**
-         * Disabling FIFO buffer
-         */
-        byte FIFO_DISABLED = 0x0;
-        /**
-         * Disabling interrupts
-         */
-        byte INTERRUPT_DISABLED = 0x0;
-        /**
-         * Disabling standby modes
-         */
-        byte STANDBY_DISABLED = 0x0;
-    }
+
+	private Vector3 processRawAccel(short x, short y, short z) {
+		return Vector3.of(x, y, z).scale(ACCEL_CONVERSION).sub(accelSpirit);
+	}
+
+	private double processRawTemperature(short raw) {
+		return raw / TEMPERATURE_DIVISOR + TEMPERATURE_OFFSET;
+	}
+
+	private Vector3 processRawGyro(short x, short y, short z) {
+		return Vector3.of(x, y, z).scale(GYRO_CONVERSION).sub(gyroSpirit);
+	}
+
+	/**
+	 * Write and verify a device configuration value.
+	 *
+	 * @param configurationName name of the config for error messages
+	 * @param register          the register to write to
+	 * @param data              the configuration data
+	 */
+	private void writeConfiguration(String configurationName, byte register, byte data) {
+		delegate.writeByteData(register, data);
+		byte actual = delegate.readByteData(register);
+		if (actual != data) {
+			throw new RuntimeIOException(
+					String.format("%s: Tried to write '%02x' to register %02x, but value is '%02x'",
+							configurationName, data, register, actual));
+		}
+	}
+
+	private MemorySegment readArray(int startAddress, MemoryLayout layout, int count) {
+		return MemorySegment.ofBuffer(delegate.readI2CBlockDataByteBuffer(startAddress, (int) layout.byteSize() * count));
+	}
+
+	@Override
+	public void close() {
+		delegate.close();
+	}
+
+	public record Reading(double temperature, double temperatureVariance, Vector3 gyro, Vector3 gyroVariance, Vector3 accel, Vector3 accelVariance) {
+		public Vector3 gravityDirection() {
+			// todo: find gravity direction
+			throw new UnsupportedOperationException();
+		}
+	}
+
+	private interface Registers {
+		/**
+		 * Set the sample rate (the values are divided by this).
+		 */
+		byte SAMPLE_RATE_DIVISOR = 0x19;
+		/**
+		 * Set up the low-pass filter
+		 */
+		byte LOW_PASS_FILTER = 0x1a;
+		/**
+		 * Set up the gyroscope
+		 */
+		byte GYRO_CONFIGURATION = 0x1b;
+		/**
+		 * Accelerometer configuration
+		 */
+		byte ACCELEROMETER_CONFIGURATION = 0x1c;
+		/**
+		 * FIFO (not used)
+		 */
+		byte FIFO_CONFIGURATION = 0x23;
+		/**
+		 * Enable interrupts (disabling)
+		 */
+		byte ENABLE_INTERRUPTS = 0x38;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the accelerometer's X axis.
+		 */
+		byte ACCEL_X_REGISTER = 0x3b;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the accelerometer's Y axis.
+		 */
+		byte ACCEL_Y_REGISTER = 0x3d;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the accelerometer's Z axis.
+		 */
+		byte ACCEL_Z_REGISTER = 0x3f;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the temperature sensor.
+		 */
+		byte TEMPERATURE_REGISTER = 0x41;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the gyro's X axis.
+		 */
+		byte GYRO_X_REGISTER = 0x43;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the gyro's Y axis.
+		 */
+		byte GYRO_Y_REGISTER = 0x45;
+		/**
+		 * Register for high bits of a 2's complement 16-bit value. The low bits
+		 * are assumed to be in the next register (this + 1).
+		 * <p>
+		 * This is the most recent reading from the gyro's Z axis.
+		 */
+		byte GYRO_Z_REGISTER = 0x47;
+		/**
+		 * Resets the various signals.
+		 */
+		byte SIGNAL_PATH_RESET = 0x68;
+		/**
+		 * I2C management
+		 */
+		byte I2C_CONFIG = 0x6a;
+		/**
+		 * Basic power management
+		 */
+		byte POWER_MANAGEMENT_CONFIG = 0x6b;
+		/**
+		 * The I2C address (6-bits)
+		 */
+		byte WHO_AM_I = 0x75;
+		/**
+		 * Standby mode management.
+		 */
+		byte STANDBY_MANAGEMENT_CONFIG = 0x6c;
+	}
+
+	private interface RegisterValues {
+		/**
+		 * Just wakes the device up, because it sets the sleep bit to 0. Also sets
+		 * the clock source to internal.
+		 */
+		byte WAKEUP = 0x0;
+		/**
+		 * Sets the full scale range of the gyroscopes to ± 2000 °/s
+		 */
+		byte DEFAULT_GYRO_CONFIGURATION = 0x18;
+		/**
+		 * Sets the sample rate divider for the gyroscopes and accelerometers. This
+		 * means<br> acc-rate = 1kHz / 1+ sample-rate<br> and <br>gyro-rate = 8kHz /
+		 * 1+ sample-rate. <br> <br> The concrete value 0 leaves the sample rate on
+		 * default, which means 1kHz for acc-rate and 8kHz for gyr-rate.
+		 */
+		byte DEFAULT_SAMPLE_DIVISOR = 0x0;
+		/**
+		 * Setting the digital low pass filter to <br>
+		 * Acc Bandwidth (Hz) = 184 <br>
+		 * Acc Delay (ms) = 2.0 <br>
+		 * Gyro Bandwidth (Hz) = 188 <br>
+		 * Gyro Delay (ms) = 1.9 <br>
+		 * Fs (kHz) = 1
+		 */
+		byte LOW_PASS_CONFIG = 0x1;
+		/**
+		 * Setting accelerometer sensitivity to ± 2g
+		 */
+		byte DEFAULT_ACCEL_CONFIGURATION = 0x0;
+		/**
+		 * Disabling FIFO buffer
+		 */
+		byte FIFO_DISABLED = 0x0;
+		/**
+		 * Disabling interrupts
+		 */
+		byte INTERRUPT_DISABLED = 0x0;
+		/**
+		 * Disabling standby modes
+		 */
+		byte STANDBY_DISABLED = 0x0;
+	}
 }
