@@ -1,5 +1,7 @@
 package sensors;
 
+import org.apache.commons.math4.legacy.linear.MatrixUtils;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.ExecutionException;
@@ -8,11 +10,12 @@ import java.util.concurrent.StructuredTaskScope;
 import static java.lang.Math.pow;
 
 public class AltitudeFuser implements AutoCloseable {
+	private static final double TIME_STEP = 0.05;
+
 	private final BMP388 barometer;
 	private final MPU6050 imu;
 
-	private final KalmanFilter1d vertVelocity;
-	private final KalmanFilter1d altitude;
+	private final KalmanFilter altitude;
 	private volatile double temperature;
 
 	private final Thread thread;
@@ -21,8 +24,11 @@ public class AltitudeFuser implements AutoCloseable {
 		this.barometer = barometer;
 		this.imu = imu;
 
-		this.vertVelocity = new KalmanFilter1d(0, 1000);
-		this.altitude = new KalmanFilter1d(0, 1000);
+		this.altitude = new KalmanFilter(MatrixUtils.createRealMatrix(new double[][] {{1, 0, 0}, {0, 0, 1}}), MatrixUtils.createRealMatrix(new double[][] {
+				{1, TIME_STEP, 0.5 * pow(TIME_STEP, 2)},
+				{0, 1, TIME_STEP},
+				{0, 0, 1}
+		}), MatrixUtils.createRealMatrix(new double[3][4]));
 		this.thread = Thread.startVirtualThread(this::updateLoop);
 	}
 
@@ -39,18 +45,14 @@ public class AltitudeFuser implements AutoCloseable {
 				var accelVariance = reading.imu.accelVariance();
 
 				var gravity = reading.imu().gravityDirection();
+				var accelUpVar = accelVariance.dot(gravity.hadamard(gravity)) * pow(dt, 2) / pow(gravity.norm(), 2); // assuming Var(gravity) = 0
+
+				var upAccel = accel.comp(gravity);
 
 				temperature = weightedTemperature(reading);
 
-				var dAltitude = vertVelocity.state() * dt;
-				var varianceDAltitude = vertVelocity.variance() * pow(dt, 2);
-
-				altitude.predict(dAltitude, varianceDAltitude);
-				altitude.correct(reading.barometer.altitude(), reading.barometer.altitudeVariance());
-
-				var dVertVelocity = accel.comp(gravity) * dt;
-				var varianceDVertVelocity = accelVariance.dot(gravity.hadamard(gravity)) * pow(dt, 2) / pow(gravity.norm(), 2); // assuming Var(gravity) = 0
-				vertVelocity.predict(dVertVelocity, varianceDVertVelocity);
+				altitude.predict(MatrixUtils.createColumnRealMatrix(new double[4]));
+				altitude.correct(MatrixUtils.createColumnRealMatrix(new double[]{reading.barometer.altitude(), upAccel}), MatrixUtils.createRealDiagonalMatrix(new double[] {reading.barometer.altitudeVariance(), accelUpVar}));
 			}
 		} catch (InterruptedException e) {
 			// ignore
