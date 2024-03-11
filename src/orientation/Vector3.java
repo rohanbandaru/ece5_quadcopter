@@ -80,4 +80,5 @@ public record Vector3(double x, double y, double z) {
 	public Vector3 rotatedBy(Quaternion q) {
 		return Vector3.rotateBy(this, q);
 	}
+
 }
