@@ -1,6 +1,6 @@
-package orientation;
+package math;
 
-import static java.lang.Math.pow;
+import static java.lang.Math.*;
 
 public record Vector3(double x, double y, double z) {
 
@@ -22,7 +22,7 @@ public record Vector3(double x, double y, double z) {
 	public static final Vector3 K = new Vector3(0, 0, 1);
 
 	public double norm() {
-		return Math.sqrt(x*x + y*y + z*z);
+		return sqrt(x*x + y*y + z*z);
 	}
 	public Vector3 scale(double s) {
 		return new Vector3(x * s, y * s, z * s);

@@ -1,4 +1,4 @@
-package orientation;
+package math;
 import static java.lang.Math.*;
 
 // mostly copied from https://introcs.cs.princeton.edu/java/32class/Quaternion.java.html
@@ -45,7 +45,7 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         double sinp = 2 * (x0 * x2 + -x3 * x1);
         double pitch = 0;
         if (abs(sinp) >= 1)
-            pitch = copySign(Math.PI / 2, pitch); // return 90 if out of range
+            pitch = copySign(Math.PI / 2, sinp); // return 90 if out of range
         else
             pitch = asin(sinp);
 
@@ -83,7 +83,7 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         return new Quaternion(x0 / d, -x1 / d, -x2 / d, -x3 / d);
     }
 
-    // return a new orientation.Quaternion whose value is (this + b)
+    // return a new math.Quaternion whose value is (this + b)
     public Quaternion add(Quaternion b) {
         return Quaternion.add(this, b);
     }
@@ -97,7 +97,7 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         return new Quaternion(x0 * s, x1 * s, x2 * s, x3 * s);
     }
 
-    // return a new orientation.Quaternion whose value is (this * b)
+    // return a new math.Quaternion whose value is (this * b)
     public Quaternion mul(Quaternion b) {
         return Quaternion.mul(this, b);
     }
@@ -141,9 +141,16 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         return new Quaternion(et * cos(r), x1*s, x2*s, x3*s);
     }
 
-    public Quaternion rotationBetween(Vector3 a, Vector3 b) {
+    public static Quaternion rotationBetween(Vector3 a, Vector3 b) {
         // a rotated by output is b
-        
+        Vector3 c = a.cross(b);
+        double d = a.dot(b);
+
+        if (c.norm() == 0 || d < 0) { // opposite vectors
+            return new Quaternion(0, 0, 1, 0);
+        }
+
+        return new Quaternion(sqrt(d * d + c.dot(c)) + d, c.x(), c.y(), c.z()).normalized();
     }
 
 }

@@ -2,7 +2,7 @@ package sensors;
 
 import com.diozero.api.I2CDevice;
 import com.diozero.api.RuntimeIOException;
-import orientation.Vector3;
+import math.Vector3;
 
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;

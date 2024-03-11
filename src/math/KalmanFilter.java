@@ -1,4 +1,4 @@
-package sensors;
+package math;
 
 import org.apache.commons.math4.legacy.linear.MatrixUtils;
 import org.apache.commons.math4.legacy.linear.RealMatrix;
