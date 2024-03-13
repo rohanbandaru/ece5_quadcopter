@@ -1,4 +1,4 @@
-package orientation;
+package pose;
 
 import math.*;
 
@@ -16,11 +16,12 @@ public class Orientation {
         orientationRawGyro = orientation.mul(fromGyroRates(dt, gyroRates)); // priori orientation
 
         Vector3 bodyGravityAccel = compensateAccel(bodyAccel, totalThrust);
+        bodyGravityAccel = bodyAccel;
 
         orientationRawAccel = Quaternion.rotationBetween(bodyGravityAccel, Vector3.of(0, 0, 1));
 
         // luh calm complementary filter
-        final double gyroTrust = 0;
+        final double gyroTrust = 0.8;
         orientation = orientationRawAccel.fractional(1-gyroTrust).mul(orientationRawGyro.fractional(gyroTrust));
         // orientation = Quaternion.slerp(orientationRawAccel, orientationRawGyro, gyroTrust);
 

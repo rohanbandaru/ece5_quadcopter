@@ -146,10 +146,6 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         Vector3 c = a.cross(b);
         double d = a.dot(b);
 
-        if (c.norm() == 0 || d < 0) { // opposite vectors
-            return new Quaternion(0, 0, 1, 0);
-        }
-
         return new Quaternion(sqrt(d * d + c.dot(c)) + d, c.x(), c.y(), c.z()).normalized();
     }
 

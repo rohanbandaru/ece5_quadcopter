@@ -1,4 +1,4 @@
-package sensors;
+package math;
 
 public record Complex(double r, double theta) {
 	private static final Complex ZERO = Complex.ofCartesian(0, 0);

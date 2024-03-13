@@ -1,6 +1,7 @@
-package sensors;
+package math;
 
-import java.util.function.Function;
+import math.Complex;
+import math.FFT;
 
 public class ZFilter {
 	private final ImpulseResponse response;

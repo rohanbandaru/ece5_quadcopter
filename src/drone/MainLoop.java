@@ -1,29 +1,44 @@
 package drone;
 
 import math.Quaternion;
-import math.Vector3;
-import orientation.Orientation;
+import sensors.AsyncPoll;
 import sensors.BMP388;
 import sensors.MPU6050;
+import pose.AltitudeFuser;
+import pose.Orientation;
 
-import static java.lang.Math.*;
+import java.time.Duration;
+import java.time.Instant;
 
 public class MainLoop {
+
     public static void main(String[] args) {
 
         Orientation ori = new Orientation();
+        AltitudeFuser altFilter = new AltitudeFuser();
+
+        MPU6050 imu;
+        BMP388 baro;
+        AsyncPoll sensors = new AsyncPoll(imu, baro);
 
         //TODO Init and calibrate sensors
         //TODO Arm ESCs
         //TODO Check receiver inputs
-        ori.initFromAccel(acceleration);
+        ori.initFromAccel(sensors.acceleration);
 
         // Main loop
-        double dt;
         while(true) {
             //TODO Poll sensors
+            Instant lastUpdate = Instant.now();
+            var now = Instant.now();
+			var dt = Duration.between(lastUpdate, now).toNanos() / 1.e9;
 
-            ori.update(dt, gyroRates, acceleration, totalThrust);
+            /*
+            ori.update(dt, sensors.gyroRates, sensors.acceleration, totalThrust);
+            altFilter.update(dt, ori.globalAccel.z(), // accel measurement
+                    imu.accelVariance().rotatedBy(ori.orientation.inv()).z(), // accel variance
+                    sensors.altitude, // altitude measurement
+                    baro.altitudeVariance()); // altitude variance
 
             Quaternion error = targetOri.mul(ori.orientation.conj());
             double yawError = error.x1();
@@ -35,12 +50,10 @@ public class MainLoop {
 
             //TODO Motor thrust
             motorFR.setThrust(throttleThrust - pitchTorque/motorOffset + ...);
+            */
 
         }
 
-
-
-
-
     }
+
 }

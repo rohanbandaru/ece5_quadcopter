@@ -150,10 +150,7 @@ public class MPU6050 implements AutoCloseable {
 	}
 
 	public record Reading(double temperature, double temperatureVariance, Vector3 gyro, Vector3 gyroVariance, Vector3 accel, Vector3 accelVariance) {
-		public Vector3 gravityDirection() {
-			// todo: find gravity direction
-			throw new UnsupportedOperationException();
-		}
+
 	}
 
 	private interface Registers {

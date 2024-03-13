@@ -1,4 +1,4 @@
-package sensors;
+package math;
 
 public class FFT {
 	// compute the FFT of x[], assuming its length n is a power of 2

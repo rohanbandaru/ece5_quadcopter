@@ -4,20 +4,21 @@ import org.apache.commons.math4.legacy.linear.MatrixUtils;
 import org.apache.commons.math4.legacy.linear.RealMatrix;
 
 public class KalmanFilter {
-	private final RealMatrix observation, dynamics, control;
+	private final RealMatrix observation, control;
 
 	private RealMatrix P, x;
 
-	public KalmanFilter(RealMatrix observation, RealMatrix dynamics, RealMatrix control) {
-		this.observation = observation;
-		this.dynamics = dynamics;
-		this.control = control;
+	public KalmanFilter(RealMatrix observation, RealMatrix control) {
+		this.observation = observation; // H
+		this.control = control; // B
+		// x_k = A(x_k-1) + B(u_k) // state transition
+		// z_k = H_k(x_k) // observation
 
 		this.P = MatrixUtils.createRealDiagonalMatrix(new double[observation.getRowDimension()]);
 		this.x = MatrixUtils.createRealMatrix(new double[observation.getRowDimension()][1]);
 	}
 
-	public synchronized void predict(RealMatrix u) {
+	public synchronized void predict(RealMatrix dynamics, RealMatrix u) {
 		x = dynamics.multiply(x).add(control.multiply(u));
 		P = dynamics.multiply(P).multiply(dynamics.transpose());
 	}
