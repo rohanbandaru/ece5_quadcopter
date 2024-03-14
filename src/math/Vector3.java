@@ -74,11 +74,16 @@ public record Vector3(double x, double y, double z) {
 	}
 
 	public static Vector3 rotateBy(Vector3 v, Quaternion q) {
-		return Vector3.ofQuaternion(q.mul(Quaternion.ofVector3(v)).mul(q.inv()));
+		return Vector3.ofQuaternion(q.mul(Quaternion.ofVector3(v)).mul(q.conj()));
 	}
 
 	public Vector3 rotatedBy(Quaternion q) {
 		return Vector3.rotateBy(this, q);
 	}
 
+
+	@Override
+	public String toString() {
+		return "[%.3f, %.3f, %.3f]".formatted(x, y, z);
+	}
 }

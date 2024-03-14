@@ -4,12 +4,12 @@ import com.diozero.api.I2CDevice;
 
 import java.time.Instant;
 
+import static java.lang.Math.exp;
 import static java.lang.Math.pow;
 import static java.time.Instant.now;
 import static sensors.BMP388.IIR.COEF_0;
 import static sensors.BMP388.IIR.COEF_7;
-import static sensors.BMP388.PressureOversample.HIGH;
-import static sensors.BMP388.PressureOversample.STANDARD;
+import static sensors.BMP388.PressureOversample.*;
 import static sensors.BMP388.Register.*;
 
 public class BMP388 implements AutoCloseable {
@@ -23,34 +23,40 @@ public class BMP388 implements AutoCloseable {
 	private PressureOversample pressureOversample;
 	private IIR iir;
 
-	private BMP388(I2CDevice delegate) {
+	private BMP388(I2CDevice delegate) throws InterruptedException {
 		this.delegate = delegate;
+		this.calibration = new CalibrationData(readData(0x31, 21));
 
-		this.delegate.writeBit(OSR.address, 1, true);
-		this.delegate.writeBit(OSR.address, 0, true);
+		this.delegate.writeByteData(CMD.address, (byte)0xb6);
+//		this.delegate.writeByteData(OSR.address, 0b110011);
+		iir = COEF_7;
+		configureOversampling(HIGH);
+//		setFifoConfig(FifoConfig.disabled());
 
-		configureIIR(COEF_0);
-		configureOversampling(STANDARD);
-
-		this.calibration = new CalibrationData(delegate.readI2CBlockDataByteArray(0x30, 0x27));
 		this.zeroAltitude = read().pressure;
 	}
 
-	public static BMP388 withDefaults(int controller) {
+	public static BMP388 withDefaults(int controller) throws InterruptedException {
 		var device = new BMP388(new I2CDevice(controller, SLAVE_ADDRESS));
-
-		device.setFifoConfig(FifoConfig.disabled());
-		device.configureOversampling(HIGH);
-		device.configureIIR(COEF_7);
 
 		return device;
 	}
 
-	public Reading read() {
-		while (!dataReady()) ;
+	public Reading read() throws InterruptedException {
+		this.delegate.writeByteData(PWR_CTRL.address, (byte)0b010011);
 
-		var temperature = compensatedTemperature(rawTemperature());
-		var pressure = compensatedPressure(rawPressure(), temperature) - zeroAltitude;
+		while (!dataReady()) {
+			if (Thread.interrupted())
+				throw new InterruptedException();
+		}
+
+		var data = delegate.readI2CBlockDataByteArray(PRESSURE_DATA_0.address, 6);
+
+		var rawPressure = ((data[2] & 0xff) << 16) | ((data[1] & 0xff) << 8) | (data[0] & 0xff);
+		var rawTemperature = ((data[5] & 0xff) << 16) | ((data[4] & 0xff) << 8) | (data[3] & 0xff);
+
+		var temperature = compensatedTemperature(rawTemperature);
+		var pressure = compensatedPressure(rawPressure, temperature) - zeroAltitude;
 
 		return new Reading(now(), temperature, pressure, temperatureVariance(), pressureVariance());
 	}
@@ -135,8 +141,21 @@ public class BMP388 implements AutoCloseable {
 		return ((data[2] & 0xff) << 16) | ((data[1] & 0xff) << 8) | data[0];
 	}
 
+	private byte[] readData(int register, int length) {
+		byte[] result = new byte[length];
+
+		for (int i = 0; i < length; i++) {
+			result[i] = delegate.readByteData(i + register);
+		}
+
+		return result;
+	}
+
 	private boolean dataReady() {
-		return (delegate.readByteData(STATUS.address) & (1 << 3)) != 0x0;
+		var status = delegate.readByteData(STATUS.address);
+		var expected = (1 << 5) | (1 << 6);
+
+		return (status & expected) == expected;
 	}
 
 	@Override
@@ -206,11 +225,11 @@ public class BMP388 implements AutoCloseable {
 		}
 
 		public double par_p1() {
-			return ((int) (short) (((data[0x6] & 0xff) << 8) | (data[0x5] & 0xff)) - (1 << 14)) / pow(2, 20);
+			return ((short) ((data[0x6] & 0xff) << 8 | (data[0x5] & 0xff)) - (1 << 14)) / pow(2, 20);
 		}
 
 		public double par_p2() {
-			return ((int) (short) (((data[0x8] & 0xff) << 8) | (data[0x7] & 0xff)) - (1 << 14)) / pow(2, 29);
+			return ((short) ((data[0x8] & 0xff) << 8 | (data[0x7] & 0xff)) - (1 << 14)) / pow(2, 29);
 		}
 
 		public double par_p3() {
@@ -238,7 +257,7 @@ public class BMP388 implements AutoCloseable {
 		}
 
 		public double par_p9() {
-			return (int) (short) (((data[0x12] & 0xff) << 8) | (data[0x11] & 0xff)) / pow(2, 48);
+			return ((short) ((data[0x12] & 0xff) << 8 | (data[0x11] & 0xff))) / pow(2, 48		);
 		}
 
 		public double par_p10() {
@@ -296,11 +315,16 @@ public class BMP388 implements AutoCloseable {
 
 	public record Reading(Instant time, double temperature, double pressure, double temperatureVariance, double pressureVariance) {
 		public double altitude() {
-			return pressure / 0.12677457000000025;
+				return (pressure) * 0.083226546738322;
 		}
 
 		public double altitudeVariance() {
 			return pressureVariance / pow(0.12677457000000025, 2);
+		}
+
+		@Override
+		public String toString() {
+			return "[Temperature = %3.3f C, pressure = %3.3f Pa, altitude = %3.3f m]".formatted(temperature, pressure, altitude());
 		}
 	}
 }

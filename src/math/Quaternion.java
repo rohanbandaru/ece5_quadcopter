@@ -1,4 +1,7 @@
 package math;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
 import static java.lang.Math.*;
 
 // mostly copied from https://introcs.cs.princeton.edu/java/32class/Quaternion.java.html
@@ -37,7 +40,7 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
     }
 
     // returns quaternion as array of euler angles
-    public double[] toEuler() {
+    public Vector3 toEuler() {
         double sinr_cosp = 2 * (x0 * x1 + x2 * x3);
         double cosr_cosp = 1 - 2 * (x1 * x1 + x2 * x2);
         double roll = atan2(sinr_cosp, cosr_cosp);
@@ -53,7 +56,7 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         double cosy_cosp = 1 - 2 * (x2 * x2 + x3 * x3);
         double yaw = atan2(siny_cosp, cosy_cosp);
 
-        return new double[]{yaw, pitch, roll};
+        return new Vector3(yaw, pitch, roll);
     }
 
     // return a string representation of the invoking object
@@ -75,6 +78,22 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
     // return the quaternion conjugate
     public Quaternion conj() {
         return new Quaternion(x0, -x1, -x2, -x3);
+    }
+
+    public byte[] asBytes() {
+        var arr = new byte[4 * 8];
+        var buf = ByteBuffer.wrap(arr).order(ByteOrder.LITTLE_ENDIAN);
+        buf.putDouble(x0);
+        buf.putDouble(x1);
+        buf.putDouble(x2);
+        buf.putDouble(x3);
+
+        return arr;
+    }
+
+    public static Quaternion ofBytes(byte[] arr) {
+        var buf = ByteBuffer.wrap(arr).order(ByteOrder.LITTLE_ENDIAN);
+        return Quaternion.of(buf.getDouble(), buf.getDouble(), buf.getDouble(), buf.getDouble());
     }
 
     // return a new quaternion whose value is the inverse of this
@@ -149,4 +168,13 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
         return new Quaternion(sqrt(d * d + c.dot(c)) + d, c.x(), c.y(), c.z()).normalized();
     }
 
+    public static Quaternion fromAxisAngle(double angle, Vector3 axis)
+    {
+        double sa = sin(angle / 2);
+        return Quaternion.of(cos(angle / 2), axis.x() * sa, axis.y() * sa, axis.z() * sa);
+    }
+
+    public double dot(Quaternion newer) {
+        return x0 * newer.x0 + x1 * newer.x1 + x2 * newer.x2 + x3 * newer.x3;
+    }
 }

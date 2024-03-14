@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <option name="projectDefaultTargetUuid" value="f9e2f9c3-0ec8-4222-a328-6c19899c42a6" />
+    <targets>
+      <target name="root@drone:22" type="ssh/sftp" uuid="f9e2f9c3-0ec8-4222-a328-6c19899c42a6">
+        <config>
+          <option name="projectRootOnTarget" value="$PROJECT_DIR$/../../../drone/ece5_quadcopter" />
+          <option name="serverName" value="root@drone:22 agent" />
+          <option name="useRsync" value="true" />
+        </config>
+        <ContributedStateBase type="JavaLanguageRuntime">
+          <config>
+            <option name="homePath" value="$PROJECT_DIR$/../../../drone/jdk-21" />
+            <option name="javaVersionString" value="21.0.2" />
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>

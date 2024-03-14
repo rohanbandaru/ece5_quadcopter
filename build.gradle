@@ -1,0 +1,43 @@
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs 'src'
+        }
+    }
+}
+
+
+repositories {
+    jcenter()
+    flatDir {
+        dirs 'lib'
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs += "--enable-preview"
+}
+
+tasks.withType(Test) {
+    jvmArgs += "--enable-preview"
+}
+
+tasks.withType(JavaExec) {
+    jvmArgs += '--enable-preview'
+}
+
+javafx {
+    version = "21.0.2"
+    modules = [ 'javafx.controls' ]
+}
+
+dependencies {
+    implementation 'com.diozero:diozero-core:1.4.0'
+    implementation 'org.apache.commons:commons-math3:3.6.1'
+//    implementation 'com.diozero:diozero-provider-pigpio:1.4.0'
+}

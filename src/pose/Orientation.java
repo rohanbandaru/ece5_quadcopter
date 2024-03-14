@@ -1,43 +1,43 @@
 package pose;
 
+import drone.DroneConstants;
 import math.*;
 
 import static drone.DroneConstants.*;
 import static java.lang.Math.*;
+import static sensors.MPU6050.G;
 
 public class Orientation {
 
-    public Quaternion orientation = Quaternion.IDENTITY;
-    public Quaternion orientationRawGyro = Quaternion.IDENTITY;
-    public Quaternion orientationRawAccel = Quaternion.IDENTITY;
+    public volatile Quaternion orientation = Quaternion.IDENTITY;
     public Vector3 globalAccel = Vector3.ZERO;
 
     public void update(double dt, Vector3 gyroRates, Vector3 bodyAccel, double totalThrust) {
-        orientationRawGyro = orientation.mul(fromGyroRates(dt, gyroRates)); // priori orientation
+        var gyroQuat = orientation.mul(fromGyroRates(dt, Vector3.of(gyroRates.x(), gyroRates.y(), gyroRates.z())));
+        var yawQuat = Quaternion.of(gyroQuat.x0(), 0, 0, gyroQuat.x3()).normalized();
 
-        Vector3 bodyGravityAccel = compensateAccel(bodyAccel, totalThrust);
-        bodyGravityAccel = bodyAccel;
+        var bodyAccelNorm = bodyAccel.normalized();
+        double accPitch = -asin(bodyAccelNorm.x());
+        double accRoll = asin(bodyAccelNorm.y());
+        var accelQuat = fromGyroRates(1, Vector3.of(accRoll, accPitch, 0));
+        var accelQuatRot = yawQuat.mul(accelQuat);
 
-        orientationRawAccel = Quaternion.rotationBetween(bodyGravityAccel, Vector3.of(0, 0, 1));
-
-        // luh calm complementary filter
-        final double gyroTrust = 0.8;
-        orientation = orientationRawAccel.fractional(1-gyroTrust).mul(orientationRawGyro.fractional(gyroTrust));
-        // orientation = Quaternion.slerp(orientationRawAccel, orientationRawGyro, gyroTrust);
+        double alpha = 0.5;
+        orientation = accelQuatRot.fractional(alpha).mul(gyroQuat.fractional(1-alpha));
 
         // ACCELERATION IN GLOBAL-FRAME
-        globalAccel = bodyAccel.rotatedBy(orientation).add(Vector3.of(0, 0, -1));
+        globalAccel = bodyAccel.rotatedBy(orientation).add(Vector3.of(0, 0, -G));
     }
 
     public void initFromAccel(Vector3 bodyAccel) {
         // when quad is sitting still, initialize starting orientation from gravity vector
-        orientation = Quaternion.rotationBetween(bodyAccel, Vector3.of(0, 0, 1));
+        orientation = Quaternion.rotationBetween(bodyAccel, Vector3.of(0, 0, G));
     }
 
     public Vector3 compensateAccel(Vector3 bodyAccel, double totalThrust) {
         // ACCELERATIONS IN BODY-FRAME
         // Estimate acceleration due to motors, drag, etc.
-        Vector3 expectedAccel = Vector3.of(0, 0, totalThrust/MASS);
+        Vector3 expectedAccel = Vector3.of(0, 0, totalThrust / MASS);
         Vector3 compensatedAccel = bodyAccel.add(expectedAccel.scale(-1));
         /*
         If compensatedAccel has a magnitude =/= 1, that means there is still
@@ -47,8 +47,8 @@ public class Orientation {
         double horizontalComponent = Vector3.of(compensatedAccel.x(), compensatedAccel.y(), 0).norm();
         if (horizontalComponent < 1) {
             // Find vertical component to make compensatedAccel have magnitude 1
-            double vertical = sqrt(1-pow(horizontalComponent, 2));
-            double diff = compensatedAccel.z()-vertical;
+            double vertical = sqrt(1 - pow(horizontalComponent, 2));
+            double diff = compensatedAccel.z() - vertical;
             diff = copySign(min(abs(diff), 0.1), signum(diff)); // Upper bound on the correction
             compensatedAccel = compensatedAccel.add(Vector3.K.scale(-diff));
         }

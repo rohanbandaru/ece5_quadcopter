@@ -9,12 +9,18 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 import static java.lang.Math.PI;
+import static java.lang.Math.pow;
 import static java.lang.foreign.ValueLayout.JAVA_SHORT_UNALIGNED;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 
 public class MPU6050 implements AutoCloseable {
 	private static final ValueLayout.OfShort MPU_SHORT = JAVA_SHORT_UNALIGNED.withOrder(BIG_ENDIAN);
-	private static final double G = 9.80665;
+	public static final double G = 9.80665;
+
+	private static final double GYRO_VARIANCE_VAL = pow(0.05 * 2 * PI / 360., 2);
+	private static final Vector3 GYRO_VARIANCE = Vector3.of(GYRO_VARIANCE_VAL, GYRO_VARIANCE_VAL, GYRO_VARIANCE_VAL);
+	private static final double ACCEL_VARIANCE_VAL = pow(0.784, 2);
+	private static final Vector3 ACCEL_VARIANCE = Vector3.of(ACCEL_VARIANCE_VAL, ACCEL_VARIANCE_VAL, ACCEL_VARIANCE_VAL);
 
 	//https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
 	private static final int DEFAULT_ADDRESS = 0x68;
@@ -24,8 +30,8 @@ public class MPU6050 implements AutoCloseable {
 	private static final double GYRO_SENSITIVITY = 131f;
 	private static final double ACCEL_SENSITIVITY = 16384f;
 
-	private static final double GYRO_CONVERSION = 1 / 65.5 * PI / 180 / GYRO_SENSITIVITY;
-	private static final double ACCEL_CONVERSION = 1. / 4096 * G / ACCEL_SENSITIVITY;
+	private static final double GYRO_CONVERSION = (1 / 65.5) * PI / 180;
+	private static final double ACCEL_CONVERSION = 1. / 4096 * G;
 
 	// temperature values
 	private static final double TEMPERATURE_DIVISOR = 340f;
@@ -77,10 +83,10 @@ public class MPU6050 implements AutoCloseable {
 		accelSpirit = accelSpirit.add(accel.scale(1.0 / CALIBRATION_COUNT));
 
 		var gravityAxis = accelSpirit.projectedOnto(up).normalized();
-		if (gravityAxis.comp(up) > 0)
+		if (gravityAxis.comp(up) < 0)
 			throw new IllegalArgumentException("Vertical axis is not aligned with gravity");
 
-		accelSpirit = accelSpirit.add(gravityAxis.scale(G));
+		accelSpirit = accelSpirit.add(gravityAxis.scale(G).scale(-1));
 	}
 
 	public Reading read() {
@@ -89,7 +95,8 @@ public class MPU6050 implements AutoCloseable {
 		var accel = processRawAccel(data.getAtIndex(MPU_SHORT, 0), data.getAtIndex(MPU_SHORT, 1), data.getAtIndex(MPU_SHORT, 2));
 		var temperature = processRawTemperature(data.getAtIndex(MPU_SHORT, 3));
 		var gyro = processRawGyro(data.getAtIndex(MPU_SHORT, 4), data.getAtIndex(MPU_SHORT, 5), data.getAtIndex(MPU_SHORT, 6));
-		throw new UnsupportedOperationException();
+
+		return new Reading(temperature, 1, gyro, GYRO_VARIANCE, accel, ACCEL_VARIANCE);
 // TODO: gyro and accel variance here
 //		return new Reading(temperature, 1, gyro, accel);
 	}

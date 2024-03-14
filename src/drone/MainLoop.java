@@ -1,7 +1,5 @@
 package drone;
 
-import math.Quaternion;
-import sensors.AsyncPoll;
 import sensors.BMP388;
 import sensors.MPU6050;
 import pose.AltitudeFuser;
@@ -12,19 +10,18 @@ import java.time.Instant;
 
 public class MainLoop {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
 
         Orientation ori = new Orientation();
         AltitudeFuser altFilter = new AltitudeFuser();
 
-        MPU6050 imu;
-        BMP388 baro;
-        AsyncPoll sensors = new AsyncPoll(imu, baro);
+        MPU6050 imu = new MPU6050(1);
+        BMP388 baro = BMP388.withDefaults(1);
 
         //TODO Init and calibrate sensors
         //TODO Arm ESCs
         //TODO Check receiver inputs
-        ori.initFromAccel(sensors.acceleration);
+//        ori.initFromAccel(sensors.acceleration);
 
         // Main loop
         while(true) {
