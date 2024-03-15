@@ -177,4 +177,12 @@ public record Quaternion(double x0, double x1, double x2, double x3) {
     public double dot(Quaternion newer) {
         return x0 * newer.x0 + x1 * newer.x1 + x2 * newer.x2 + x3 * newer.x3;
     }
+
+    public static Vector3 decompose(Quaternion q) {
+        double roll = Math.acos(Quaternion.of(q.x0(),q.x1(), 0, 0).normalized().x0())*2;
+        double pitch = Math.acos(Quaternion.of(q.x0(), 0, q.x2(), 0).normalized().x0())*2;
+        double yaw = Math.acos(Quaternion.of(q.x0(), 0, 0, q.x3()).normalized().x0())*2;
+        return Vector3.of(yaw, pitch, roll);
+    }
+
 }

@@ -1,6 +1,9 @@
 package math;
 
+import java.nio.ByteBuffer;
+
 import static java.lang.Math.*;
+import static java.nio.ByteOrder.LITTLE_ENDIAN;
 
 public record Vector3(double x, double y, double z) {
 
@@ -24,6 +27,9 @@ public record Vector3(double x, double y, double z) {
 	public double norm() {
 		return sqrt(x*x + y*y + z*z);
 	}
+
+	public double norm2() {return x*x + y*y + z*z;}
+
 	public Vector3 scale(double s) {
 		return new Vector3(x * s, y * s, z * s);
 	}
@@ -81,6 +87,19 @@ public record Vector3(double x, double y, double z) {
 		return Vector3.rotateBy(this, q);
 	}
 
+	public static Vector3 ofBytes(byte[] bytes) {
+		var w = ByteBuffer.wrap(bytes).order(LITTLE_ENDIAN);
+		return Vector3.of(w.getDouble(), w.getDouble(), w.getDouble());
+	}
+
+	public byte[] toBytes() {
+		var bytes = new byte[24];
+		var bb = ByteBuffer.wrap(bytes).order(LITTLE_ENDIAN);
+		bb.putDouble(x);
+		bb.putDouble(y);
+		bb.putDouble(z);
+		return bytes;
+	}
 
 	@Override
 	public String toString() {

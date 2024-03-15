@@ -14,8 +14,8 @@ public class KalmanFilter {
 		// x_k = A(x_k-1) + B(u_k) // state transition
 		// z_k = H_k(x_k) // observation
 
-		this.P = MatrixUtils.createRealDiagonalMatrix(new double[observation.getRowDimension()]);
-		this.x = MatrixUtils.createRealMatrix(new double[observation.getRowDimension()][1]);
+		this.P = MatrixUtils.createRealIdentityMatrix(observation.getColumnDimension());
+		this.x = MatrixUtils.createRealMatrix(new double[observation.getColumnDimension()][1]);
 	}
 
 	public synchronized void predict(RealMatrix dynamics, RealMatrix u) {

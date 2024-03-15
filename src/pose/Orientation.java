@@ -10,7 +10,7 @@ import static sensors.MPU6050.G;
 public class Orientation {
 
     public volatile Quaternion orientation = Quaternion.IDENTITY;
-    public Vector3 globalAccel = Vector3.ZERO;
+    public volatile Vector3 globalAccel = Vector3.ZERO;
 
     public void update(double dt, Vector3 gyroRates, Vector3 bodyAccel, double totalThrust) {
         var gyroQuat = orientation.mul(fromGyroRates(dt, Vector3.of(gyroRates.x(), gyroRates.y(), gyroRates.z())));
@@ -19,11 +19,12 @@ public class Orientation {
         var bodyAccelNorm = bodyAccel.normalized();
         double accPitch = -asin(bodyAccelNorm.x());
         double accRoll = asin(bodyAccelNorm.y());
+
         var accelQuat = fromGyroRates(1, Vector3.of(accRoll, accPitch, 0));
         var accelQuatRot = yawQuat.mul(accelQuat);
 
-        double alpha = 0.5;
-        orientation = accelQuatRot.fractional(alpha).mul(gyroQuat.fractional(1-alpha));
+        double alpha = 0.3;
+        orientation = accelQuatRot.fractional(alpha).mul(gyroQuat.fractional(1 - alpha));
 
         // ACCELERATION IN GLOBAL-FRAME
         globalAccel = bodyAccel.rotatedBy(orientation).add(Vector3.of(0, 0, -G));
@@ -31,7 +32,9 @@ public class Orientation {
 
     public void initFromAccel(Vector3 bodyAccel) {
         // when quad is sitting still, initialize starting orientation from gravity vector
-        orientation = Quaternion.rotationBetween(bodyAccel, Vector3.of(0, 0, G));
+        double accPitch = -asin(bodyAccel.normalized().x());
+        double accRoll = asin(bodyAccel.normalized().y());
+        orientation = fromGyroRates(1, Vector3.of(accRoll, accPitch, 0));
     }
 
     public Vector3 compensateAccel(Vector3 bodyAccel, double totalThrust) {

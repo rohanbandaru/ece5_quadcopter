@@ -29,8 +29,8 @@ public class BMP388 implements AutoCloseable {
 
 		this.delegate.writeByteData(CMD.address, (byte)0xb6);
 //		this.delegate.writeByteData(OSR.address, 0b110011);
-		iir = COEF_7;
-		configureOversampling(HIGH);
+		iir = COEF_0;
+		configureOversampling(ULTRA_LOW);
 //		setFifoConfig(FifoConfig.disabled());
 
 		this.zeroAltitude = read().pressure;

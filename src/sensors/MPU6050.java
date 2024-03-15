@@ -82,11 +82,7 @@ public class MPU6050 implements AutoCloseable {
 		gyroSpirit = gyroSpirit.add(gyro.scale(1.0 / CALIBRATION_COUNT));
 		accelSpirit = accelSpirit.add(accel.scale(1.0 / CALIBRATION_COUNT));
 
-		var gravityAxis = accelSpirit.projectedOnto(up).normalized();
-		if (gravityAxis.comp(up) < 0)
-			throw new IllegalArgumentException("Vertical axis is not aligned with gravity");
-
-		accelSpirit = accelSpirit.add(gravityAxis.scale(G).scale(-1));
+		accelSpirit = accelSpirit.add(up.scale(-G));
 	}
 
 	public Reading read() {

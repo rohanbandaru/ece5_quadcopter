@@ -3,6 +3,7 @@ package drone;
 import javafx.animation.RotateTransition;
 import javafx.application.Application;
 import javafx.geometry.Point3D;
+import javafx.scene.shape.Line;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.scene.Scene;
@@ -19,6 +20,7 @@ import javafx.scene.transform.Translate;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import math.Quaternion;
+import math.Vector3;
 import pose.Orientation;
 
 import java.io.IOException;
@@ -28,14 +30,19 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 import java.util.Random;
 
-public class OrientationRenderer extends Application{
+import static java.lang.Math.PI;
+import static math.Vector3.I;
+
+public class OrientationRenderer extends Application {
     //rotational offset of the camera object, used to render the block in a better angle
     private int rotateY = -20;
     private int rotateX = -20;
 
     private volatile static Quaternion q = Quaternion.IDENTITY;
+    private volatile static Vector3 v = Vector3.K;
 
     @Override
     public void start(Stage primaryStage) throws Exception {
@@ -45,6 +52,9 @@ public class OrientationRenderer extends Application{
         block.setMaterial(new PhongMaterial(Color.RED));
         block.setDrawMode(DrawMode.LINE);
 
+        var pointer = new Box(0.1, 0.1, 2);
+        pointer.setDrawMode(DrawMode.FILL);
+
         //creates the lines marking the x, y, and z axis
         Box lineX = new Box(100, 0.01, 0.01);
         Box lineY = new Box(0.01, 100, 0.01);
@@ -52,7 +62,7 @@ public class OrientationRenderer extends Application{
 
         // Create and position camera
         Camera camera = new PerspectiveCamera(true);
-        camera.getTransforms().addAll (
+        camera.getTransforms().addAll(
                 new Rotate(rotateY, Rotate.Y_AXIS),
                 new Rotate(rotateX, Rotate.X_AXIS),
                 new Translate(0, 0, -15));
@@ -61,6 +71,7 @@ public class OrientationRenderer extends Application{
         Group root = new Group();
         root.getChildren().add(camera);
         root.getChildren().add(block);
+//        root.getChildren().add(pointer);
         root.getChildren().add(lineX);
         root.getChildren().add(lineY);
         root.getChildren().add(lineZ);
@@ -81,47 +92,63 @@ public class OrientationRenderer extends Application{
         RotateTransition rt = new RotateTransition(Duration.millis(40), block); //The refresh rate of the loop is set in the constructor, can be changed to make it loop faster or slower
         rt.setCycleCount(1);
         rt.play();
-        rt.setOnFinished(new EventHandler<ActionEvent>() {
-            @Override
-            public void handle(ActionEvent event) {
-                /*
-                 * TODO: replace the getPos() function with a function that gets the quaternion
-                 * as a double array with 4 indexes and the w, i, j, and k values stored
-                 * in the indexes 0-3.
-                 */
-                double[] vec = getPos();
+        rt.setOnFinished(event -> {
+            /*
+             * TODO: replace the getPos() function with a function that gets the quaternion
+             * as a double array with 4 indexes and the w, i, j, and k values stored
+             * in the indexes 0-3.
+             */
+            double[] vec = getPos();
 
-                //math to calculate the angle of rotation and the axis of rotation from the given quaternion
-                double theta, Ax, Ay, Az, angle;
-                theta = Math.acos(vec[0]);
-                Ax = -vec[1] / Math.sin(theta);
-                Az = -vec[2] / Math.sin(theta);
-                Ay = -vec[3] / Math.sin(theta);
-                angle = Math.toDegrees(2 * theta);
+            //math to calculate the angle of rotation and the axis of rotation from the given quaternion
+            AxisAngle result = getAxisAngle(vec);
 
-                //renders out the new rotation of the block
-                block.getTransforms().clear();
-                block.getTransforms().add(new Rotate(angle, new Point3D(Ax, Ay, Az)));
-                rt.play(); //loops the transition again
-            }
+            //renders out the new rotation of the block
+            block.getTransforms().clear();
+            block.getTransforms().add(new Rotate(result.angle(), new Point3D(result.Ax(), result.Ay(), result.Az())));
+
+            var vector = I.scale(0.5).add(v.scale(0.5)).normalized();
+            pointer.getTransforms().clear();
+            pointer.getTransforms().add(new Rotate(180, new Point3D(vector.x(), vector.y(), vector.z())));
+
+            rt.play(); //loops the transition again
         });
+    }
+
+    private static AxisAngle getAxisAngle(double[] vec) {
+        double theta, Ax, Ay, Az, angle;
+        theta = Math.acos(vec[0]);
+        Ax = -vec[1] / Math.sin(theta);
+        Az = -vec[2] / Math.sin(theta);
+        Ay = -vec[3] / Math.sin(theta);
+        angle = Math.toDegrees(2 * theta);
+        AxisAngle result = new AxisAngle(Ax, Ay, Az, angle);
+        return result;
+    }
+
+    private record AxisAngle(double Ax, double Ay, double Az, double angle) {
     }
 
     //for testing, spits out a couple random rotations for the rendering to be updated
     public double[] getPos() {
-       var q = OrientationRenderer.q;
-       return new double[]{q.x0(), q.x1(), q.x2(), q.x3()};
+        var q = OrientationRenderer.q;
+        return new double[]{q.x0(), q.x1(), q.x2(), q.x3()};
     }
 
 
     public static void main(String[] args) throws IOException {
         Thread.startVirtualThread(() -> {
             try (var socket = DatagramChannel.open().bind(new InetSocketAddress("0.0.0.0", 4444))) {
-                var bytes = new byte[4 * 8];
+                var bytes = new byte[4 * 8 + 3 * 8];
 
                 while (!Thread.interrupted()) {
-                    socket.receive(ByteBuffer.wrap(bytes));
+                    var bb = ByteBuffer.wrap(bytes);
+                    socket.receive(bb);
+                    bb.flip();
+
                     q = Quaternion.ofBytes(bytes);
+                    if (bb.remaining() >= 4 * 8 + 3 * 8)
+                        v = Vector3.ofBytes(Arrays.copyOfRange(bytes, 4 * 8, 4 * 8 + 3 * 8));
                 }
 
             } catch (Throwable e) {

@@ -24,6 +24,7 @@ public class OrientationTest {
              var baro = BMP388.withDefaults(1);
              var imu = new MPU6050(1)) {
             imu.calibrate(Vector3.K);
+            var af = new AltitudeFuser();
 
             //ori.initFromAccel(imu.read().accel());
 
@@ -33,10 +34,14 @@ public class OrientationTest {
                 var now = Instant.now();
                 var dt = Duration.between(lastUpdate, now).toNanos() / 1.e9;
                 var imuReading = imu.read();
+                var barometerReading = baro.read();
+
                 ori.update(dt, imuReading.gyro(), imuReading.accel(), 0);
+                af.update(dt, ori.globalAccel.z(), imuReading.accelVariance().rotatedBy(ori.orientation).z(), barometerReading.altitude(), barometerReading.altitudeVariance());
+
                 //System.out.println(baro.read());
                 //System.out.println(imuReading);
-                System.out.println(ori.globalAccel.z());
+                System.out.printf("%3.3f,%3.3f,%3.3f%n", barometerReading.altitude(), af.altitude(), af.verticalVelocity());
                 var orientation = ori.orientation;
                 socket.send(ByteBuffer.wrap(orientation.asBytes()), new InetSocketAddress("10.42.42.2", 4444));
 
